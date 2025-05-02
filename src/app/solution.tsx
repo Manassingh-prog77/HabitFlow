@@ -9,9 +9,11 @@ import {
    CartesianGrid, 
 } from 'recharts';
 import { v4 as uuidv4 } from 'uuid';
+  // Tooltip remains largely the same, but relies on filtered chartData
+  import { TooltipProps } from 'recharts';
 
 // --- Icon Mapping ---
-const ICONS: { [key: string]: React.ComponentType<any> } = {
+const ICONS: { [key: string]: React.ComponentType<React.SVGProps<SVGSVGElement>> } = {
   Moon: Moon, Droplet: Droplet, Monitor: Monitor, CheckSquare: CheckSquare, Activity: Activity,
   BookOpen: BookOpen, Coffee: Coffee, Dumbbell: Dumbbell, Folder: Folder, // Added Folder
 };
@@ -214,39 +216,6 @@ export default function HabitFlowApp() {
 
   }, [collections, isLoaded]);
 
-  // Save active collection ID
-  useEffect(() => {
-    if (!isLoaded) return;
-    if (activeCollectionId) {
-      localStorage.setItem(LS_ACTIVE_COLLECTION_ID_KEY, activeCollectionId);
-    } else {
-      localStorage.removeItem(LS_ACTIVE_COLLECTION_ID_KEY);
-    }
-    // Recalculate stats when active collection changes
-    updateStats(history, activeCollectionHabits);
-
-    // Reset active habit ID if the collection doesn't have it or is empty
-    const currentActiveHabits = collections.find(c => c.id === activeCollectionId)?.habits || [];
-    if (!currentActiveHabits.some(h => h.id === activeHabitId)) {
-        setActiveHabitId(currentActiveHabits.length > 0 ? currentActiveHabits[0].id : '');
-    }
-
-  }, [activeCollectionId, isLoaded, history, activeCollectionHabits]); // Recalculate stats on history change too
-
-  // Save active habit ID (for mobile toggle)
-  useEffect(() => {
-    if (!isLoaded) return;
-    // Only save if it belongs to a valid habit in the active collection
-    if (activeHabitId && activeCollectionHabits.some(h => h.id === activeHabitId)) {
-      localStorage.setItem(LS_ACTIVE_HABIT_ID_KEY, activeHabitId);
-    } else {
-        // If invalid (e.g., habit deleted, collection changed), remove or reset
-        localStorage.removeItem(LS_ACTIVE_HABIT_ID_KEY);
-        // Optionally reset to first habit of active collection if needed
-        // if (activeCollectionHabits.length > 0) setActiveHabitId(activeCollectionHabits[0].id);
-    }
-  }, [activeHabitId, activeCollectionHabits, isLoaded]);
-
   // --- Stat Calculation (Now depends on active collection habits) ---
   const updateStats = useCallback((historyData: HistoryEntry[], currentCollectionHabits: HabitDefinition[]) => {
     if (!currentCollectionHabits || currentCollectionHabits.length === 0) {
@@ -312,6 +281,40 @@ export default function HabitFlowApp() {
 
     setStreak(currentStreak);
   }, []); // Dependencies are handled in the calling useEffect
+
+  // Save active collection ID
+  useEffect(() => {
+    if (!isLoaded) return;
+    if (activeCollectionId) {
+      localStorage.setItem(LS_ACTIVE_COLLECTION_ID_KEY, activeCollectionId);
+    } else {
+      localStorage.removeItem(LS_ACTIVE_COLLECTION_ID_KEY);
+    }
+    // Recalculate stats when active collection changes
+    updateStats(history, activeCollectionHabits);
+
+    // Reset active habit ID if the collection doesn't have it or is empty
+    const currentActiveHabits = collections.find(c => c.id === activeCollectionId)?.habits || [];
+    if (!currentActiveHabits.some(h => h.id === activeHabitId)) {
+        setActiveHabitId(currentActiveHabits.length > 0 ? currentActiveHabits[0].id : '');
+    }
+
+  }, [activeCollectionId, isLoaded, history, activeCollectionHabits,activeHabitId,collections,updateStats]); // Recalculate stats on history change too
+
+  // Save active habit ID (for mobile toggle)
+  useEffect(() => {
+    if (!isLoaded) return;
+    // Only save if it belongs to a valid habit in the active collection
+    if (activeHabitId && activeCollectionHabits.some(h => h.id === activeHabitId)) {
+      localStorage.setItem(LS_ACTIVE_HABIT_ID_KEY, activeHabitId);
+    } else {
+        // If invalid (e.g., habit deleted, collection changed), remove or reset
+        localStorage.removeItem(LS_ACTIVE_HABIT_ID_KEY);
+        // Optionally reset to first habit of active collection if needed
+        // if (activeCollectionHabits.length > 0) setActiveHabitId(activeCollectionHabits[0].id);
+    }
+  }, [activeHabitId, activeCollectionHabits, isLoaded]);
+
 
   // --- Chart Data Preparation (Filters by active collection) ---
   const getLast7DaysData = useCallback((): ChartDataEntry[] => {
@@ -496,12 +499,11 @@ export default function HabitFlowApp() {
   const activeHabitDefinition = useMemo(() => activeCollectionHabits.find(h => h.id === activeHabitId), [activeCollectionHabits, activeHabitId]);
   const formatXAxis = (dateStr: string) => dateStr.slice(5);
 
-  // Tooltip remains largely the same, but relies on filtered chartData
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
     if (active && payload && payload.length && activeCollectionHabits) {
         const date = new Date(label).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
         return ( <div className="bg-white p-2 shadow-md rounded-md border border-slate-200 text-sm"> <p className="font-medium mb-1">{date}</p>
-            {payload.map((entry: any) => {
+            {payload.map((entry: { dataKey: string; name: string; value: number }) => {
               // Find habit within the active collection for units/colors
               const habit = activeCollectionHabits.find(h => h.id === entry.dataKey);
               if (!habit) return null;
@@ -544,7 +546,7 @@ export default function HabitFlowApp() {
                         const CollectionIcon = ICONS[collection.iconName] || ICONS[DEFAULT_COLLECTION_ICON_NAME];
                         return (
                             <div key={collection.id} className={`relative group flex items-center pl-3 pr-2 py-1.5 rounded-lg cursor-pointer border transition-colors duration-150 ${isActive ? 'bg-teal-100 border-teal-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100 hover:border-slate-300'}`} onClick={() => setActiveCollectionId(collection.id)}>
-                                <CollectionIcon size={18} className={`mr-2 ${isActive ? 'text-teal-700' : 'text-slate-500'}`} />
+                                <CollectionIcon width={18} height={18} className={`mr-2 ${isActive ? 'text-teal-700' : 'text-slate-500'}`} />
                                 <span className={`font-medium text-sm ${isActive ? 'text-teal-800' : 'text-slate-700'}`}>{collection.name}</span>
                                 {/* Delete button for collection */}
                                 {collections.length > 1 && ( // Show only if more than one collection exists
@@ -587,7 +589,7 @@ export default function HabitFlowApp() {
                   return (
                     <div key={habit.id} className="bg-white p-5 rounded-2xl shadow-md hover:shadow-lg transition-shadow duration-200 relative group">
                       <div className="flex items-center mb-3">
-                        <IconComponent size={22} className={colorClasses.text} />
+                        <IconComponent width={22} height={22} className={colorClasses.text} />
                         <h3 className="ml-3 text-xl font-medium text-slate-700">{habit.name}</h3>
                       </div>
                       <div className="flex items-center space-x-4">
